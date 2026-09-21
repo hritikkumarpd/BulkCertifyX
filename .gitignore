@@ -1,0 +1,42 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# env / secrets
+.env
+.env.local
+.env.*.local
+*.pem
+
+# build output
+dist/
+build/
+.vite/
+frontend/dist/
+backend/dist/
+
+# logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# runtime / temp
+tmp/
+temp/
+.cache/
+coverage/
+
+# puppeteer / generated artifacts
+.local-chromium/
+generated/
+*.pdf.tmp
+
+# editor / os
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

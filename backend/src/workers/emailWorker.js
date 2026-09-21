@@ -1,0 +1,59 @@
+import { Worker } from 'bullmq';
+import { redisConnection } from '../lib/redis.js';
+import { QUEUE_NAMES } from '../lib/queues.js';
+import { supabaseAdmin } from '../lib/supabase.js';
+import { emailService } from '../services/emailService.js';
+import { storageService } from '../services/storageService.js';
+import { qrService } from '../services/qrService.js';
+import { usageService } from '../services/usageService.js';
+import { getPlan } from '../config/plans.js';
+import { logger } from '../lib/logger.js';
+
+async function processEmail(job) {
+  const { certificateId, orgId } = job.data;
+
+  const tier = await usageService.getPlanTier(orgId);
+  if (!getPlan(tier).features.email) {
+    // Plan doesn't include email delivery — mark and skip (not an error).
+    await supabaseAdmin.from('certificates').update({ email_status: 'not_sent' }).eq('id', certificateId);
+    return { skipped: 'plan' };
+  }
+
+  const { data: cert } = await supabaseAdmin.from('certificates').select('*').eq('id', certificateId).single();
+  if (!cert || !cert.recipient_email) return { skipped: 'no_recipient' };
+
+  const { data: org } = await supabaseAdmin.from('organizations').select('*').eq('id', orgId).single();
+
+  await supabaseAdmin.from('certificates').update({ email_status: 'queued' }).eq('id', certificateId);
+
+  try {
+    const downloadUrl = cert.pdf_url ? await storageService.signedUrl(cert.pdf_url, 7 * 24 * 3600) : '#';
+    await emailService.sendCertificate({
+      to: cert.recipient_email,
+      recipientName: cert.recipient_name,
+      eventName: cert.fields?.event_name || 'your program',
+      orgName: org.white_label && org.brand_name ? org.brand_name : org.name,
+      brandColor: org.brand_color,
+      verifyUrl: qrService.verificationUrl(cert.verification_code),
+      downloadUrl,
+      footer: org.footer_text,
+    });
+    await supabaseAdmin.from('certificates').update({ email_status: 'sent' }).eq('id', certificateId);
+    await usageService.incrementEmails(orgId, 1);
+    return { sent: true };
+  } catch (err) {
+    await supabaseAdmin.from('certificates').update({ email_status: 'failed' }).eq('id', certificateId);
+    logger.error({ err, certificateId }, 'certificate email failed');
+    throw err; // let BullMQ retry per backoff policy
+  }
+}
+
+export function startEmailWorker() {
+  const worker = new Worker(QUEUE_NAMES.email, processEmail, {
+    connection: redisConnection,
+    concurrency: Number(process.env.EMAIL_CONCURRENCY || 3),
+    limiter: { max: 10, duration: 1000 }, // respect provider rate limits
+  });
+  worker.on('failed', (job, err) => logger.warn({ jobId: job?.id, err }, 'email job failed'));
+  return worker;
+}
