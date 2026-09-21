@@ -1,37 +1,19 @@
-# Render blueprint: BulkCertifyX API + Worker. Both share an env group so
-# credentials stay in sync. Frontend deploys to Vercel separately.
+# Render blueprint: BulkCertifyX API + Workers (100% Free Tier)
+# Both API and Background Workers run inside one Free Web Service.
+# Frontend deploys to Vercel separately.
 services:
   - type: web
     name: bulkcertifyx-api
     runtime: docker
     rootDir: backend
     dockerfilePath: ./Dockerfile
-    plan: standard
+    plan: free
     healthCheckPath: /health
     dockerCommand: npm start
-    envVars:
-      - fromGroup: bulkcertifyx-env
-
-  - type: worker
-    name: bulkcertifyx-worker
-    runtime: docker
-    rootDir: backend
-    dockerfilePath: ./Dockerfile
-    plan: standard
-    dockerCommand: npm run worker
-    envVars:
-      - fromGroup: bulkcertifyx-env
-
-envVarGroups:
-  - name: bulkcertifyx-env
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
-        value: 3000
-      # Set the remaining secrets in the Render dashboard:
-      #   FRONTEND_URL, PUBLIC_APP_URL,
-      #   SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_KEY, SUPABASE_STORAGE_BUCKET,
-      #   REDIS_URL,
-      #   RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET, RAZORPAY_PLAN_*,
-      #   RESEND_API_KEY, EMAIL_FROM, JWT_SECRET, SENTRY_DSN
+        value: 10000
+      - key: RUN_WORKERS_IN_API
+        value: "true"
