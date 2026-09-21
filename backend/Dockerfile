@@ -1,6 +1,6 @@
 # Production image for the BulkCertifyX API and worker.
 # Uses Puppeteer's Chromium; installs the system libraries it needs.
-FROM node:20-slim
+FROM node:22-bookworm-slim
 
 # Chromium runtime dependencies for Puppeteer (headless rendering).
 RUN apt-get update && apt-get install -y --no-install-recommends \

@@ -1,5 +1,10 @@
+import WebSocket from 'ws';
 import { createClient } from '@supabase/supabase-js';
 import { env } from '../config/env.js';
+
+if (typeof globalThis.WebSocket === 'undefined') {
+  globalThis.WebSocket = WebSocket;
+}
 
 /**
  * Service-role client. BYPASSES RLS — only use in trusted server code
