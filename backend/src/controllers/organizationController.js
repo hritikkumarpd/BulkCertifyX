@@ -28,6 +28,9 @@ export const organizationController = {
   create: asyncHandler(async (req, res) => {
     const body = createSchema.parse(req.body);
     let slug = body.slug ? slugify(body.slug) : slugify(body.name);
+    if (!slug || slug.length < 2) {
+      slug = `org-${Math.random().toString(36).slice(2, 8)}`;
+    }
 
     // Ensure slug uniqueness.
     const { data: existing } = await supabaseAdmin.from('organizations').select('id').eq('slug', slug).maybeSingle();

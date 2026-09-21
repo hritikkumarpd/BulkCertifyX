@@ -38,6 +38,7 @@ export default function BulkGeneratePage() {
   const { data: events } = useQuery({ queryKey: ['events'], queryFn: () => apiGet('/events') });
 
   async function handleFile(file) {
+    if (!templateId) return toast.error('Please select a template first.');
     if (!file) return;
     if (!file.name.endsWith('.csv')) return toast.error('Please choose a .csv file.');
     const text = await file.text();
@@ -147,7 +148,11 @@ export default function BulkGeneratePage() {
           <div
             ref={dropRef}
             onDragOver={(e) => { e.preventDefault(); }}
-            onDrop={(e) => { e.preventDefault(); handleFile(e.dataTransfer.files?.[0]); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (!templateId) return toast.error('Please select a template first.');
+              handleFile(e.dataTransfer.files?.[0]);
+            }}
             className="mt-5 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-line bg-surface py-12 text-center"
           >
             <UploadCloud className="h-8 w-8 text-muted" />

@@ -46,7 +46,16 @@ export function createApp() {
   app.post(
     '/webhooks/razorpay',
     express.raw({ type: 'application/json' }),
-    (req, _res, next) => { req.rawBody = req.body; req.body = JSON.parse(req.body.toString('utf8') || '{}'); next(); },
+    (req, res, next) => {
+      req.rawBody = req.body;
+      try {
+        req.body = JSON.parse(req.body.toString('utf8') || '{}');
+        next();
+      } catch (err) {
+        logger.warn({ err: err.message }, 'invalid json received in webhook payload');
+        res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON payload' } });
+      }
+    },
     billingController.webhook,
   );
 

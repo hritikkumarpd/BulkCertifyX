@@ -1,5 +1,5 @@
 import { Worker } from 'bullmq';
-import { redisConnection } from '../lib/redis.js';
+import { createRedisConnection } from '../lib/redis.js';
 import { QUEUE_NAMES } from '../lib/queues.js';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { emailService } from '../services/emailService.js';
@@ -50,7 +50,7 @@ async function processEmail(job) {
 
 export function startEmailWorker() {
   const worker = new Worker(QUEUE_NAMES.email, processEmail, {
-    connection: redisConnection,
+    connection: createRedisConnection(),
     concurrency: Number(process.env.EMAIL_CONCURRENCY || 3),
     limiter: { max: 10, duration: 1000 }, // respect provider rate limits
   });

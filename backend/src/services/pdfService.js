@@ -11,18 +11,34 @@ import { logger } from '../lib/logger.js';
 let browserPromise = null;
 
 async function getBrowser() {
-  if (!browserPromise) {
-    browserPromise = puppeteer.launch({
-      headless: 'new',
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--font-render-hinting=none',
-      ],
-    });
+  if (browserPromise) {
+    const b = await browserPromise.catch(() => null);
+    if (b && b.isConnected()) {
+      return b;
+    }
+    browserPromise = null;
   }
+
+  browserPromise = puppeteer.launch({
+    headless: 'new',
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--font-render-hinting=none',
+    ],
+  }).then((browser) => {
+    browser.on('disconnected', () => {
+      logger.warn('Puppeteer browser disconnected. Clearing cached instance.');
+      browserPromise = null;
+    });
+    return browser;
+  }).catch((err) => {
+    browserPromise = null;
+    throw err;
+  });
+
   return browserPromise;
 }
 
@@ -41,7 +57,7 @@ async function acquire() {
 }
 
 function release() {
-  active -= 1;
+  active = Math.max(0, active - 1);
   const next = waiters.shift();
   if (next) next();
 }
@@ -58,9 +74,27 @@ export const pdfService = {
     const { w, h } = renderService.pageSizeMm(template.page_size);
 
     await acquire();
-    const browser = await getBrowser();
-    const page = await browser.newPage();
+    let page = null;
     try {
+      const browser = await getBrowser();
+      page = await browser.newPage();
+
+      // Security: Prevent SSRF and local file leakage in headless browser
+      await page.setRequestInterception(true);
+      page.on('request', (req) => {
+        const url = req.url().toLowerCase();
+        if (
+          url.startsWith('file:') ||
+          url.includes('169.254.169.254') ||
+          url.includes('127.0.0.1') ||
+          url.includes('localhost')
+        ) {
+          req.abort();
+        } else {
+          req.continue();
+        }
+      });
+
       await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 });
       const pdf = await page.pdf({
         printBackground: true,
@@ -70,7 +104,7 @@ export const pdfService = {
       });
       return pdf;
     } finally {
-      await page.close().catch(() => {});
+      if (page) await page.close().catch(() => {});
       release();
     }
   },

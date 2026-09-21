@@ -82,21 +82,31 @@ export const billingService = {
    */
   async handleWebhookEvent(event) {
     const eventId = event.id || event?.payload?.subscription?.entity?.id + ':' + event.event;
-
-    // Idempotency guard.
-    const { error: dupErr } = await supabaseAdmin.from('billing_events').insert({
-      razorpay_event_id: eventId,
-      type: event.event,
-      raw: event,
-      status: 'received',
-    });
-    if (dupErr && dupErr.code === '23505') {
-      logger.info({ eventId }, 'duplicate webhook ignored');
-      return { duplicate: true };
-    }
-
     const sub = event?.payload?.subscription?.entity;
     const payment = event?.payload?.payment?.entity;
+
+    let orgId = sub?.notes?.org_id || payment?.notes?.org_id;
+    if (!orgId && sub?.id) {
+      const { data } = await supabaseAdmin.from('subscriptions').select('org_id').eq('razorpay_subscription_id', sub.id).maybeSingle();
+      orgId = data?.org_id;
+    }
+
+    // Idempotency guard. billing_events requires org_id NOT NULL.
+    if (orgId) {
+      const { error: dupErr } = await supabaseAdmin.from('billing_events').insert({
+        org_id: orgId,
+        razorpay_event_id: eventId,
+        type: event.event,
+        raw: event,
+        status: 'received',
+      });
+      if (dupErr && dupErr.code === '23505') {
+        logger.info({ eventId }, 'duplicate webhook ignored');
+        return { duplicate: true };
+      }
+    } else {
+      logger.warn({ eventId, event: event.event }, 'webhook received without resolvable org_id; skipping billing_event receipt log');
+    }
 
     switch (event.event) {
       case 'subscription.activated':

@@ -36,7 +36,7 @@ export const bulkService = {
       throw Errors.internal('Failed to create bulk job.');
     }
 
-    // Persist rows (batched insert).
+    // Persist rows (batched insert to avoid payload size/timeout issues).
     const rowRecords = validRows.map((r, idx) => ({
       job_id: job.id,
       org_id: orgId,
@@ -44,11 +44,16 @@ export const bulkService = {
       data: r.data,
       status: 'pending',
     }));
-    const { error: rowErr } = await supabaseAdmin.from('bulk_job_rows').insert(rowRecords);
-    if (rowErr) {
-      await supabaseAdmin.from('bulk_jobs').delete().eq('id', job.id);
-      await usageService.releaseCertificates(orgId, validRows.length, period).catch(() => {});
-      throw Errors.internal('Failed to persist bulk rows.');
+
+    const BATCH_SIZE = 250;
+    for (let i = 0; i < rowRecords.length; i += BATCH_SIZE) {
+      const batch = rowRecords.slice(i, i + BATCH_SIZE);
+      const { error: rowErr } = await supabaseAdmin.from('bulk_job_rows').insert(batch);
+      if (rowErr) {
+        await supabaseAdmin.from('bulk_jobs').delete().eq('id', job.id);
+        await usageService.releaseCertificates(orgId, validRows.length, period).catch(() => {});
+        throw Errors.internal('Failed to persist bulk rows.');
+      }
     }
 
     // Enqueue. jobId = job.id makes enqueue idempotent (retried request won't double-run).

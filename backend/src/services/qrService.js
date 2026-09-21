@@ -3,8 +3,11 @@ import { env } from '../config/env.js';
 
 export const qrService = {
   verificationUrl(code, host) {
-    const base = host || env.publicAppUrl;
-    return `${base.replace(/\/$/, '')}/verify/${code}`;
+    let base = host || env.publicAppUrl || env.frontendUrl;
+    if (!/^https?:\/\//i.test(base)) {
+      base = env.isProd ? `https://${base}` : `http://${base}`;
+    }
+    return `${base.replace(/\/+$/, '')}/verify/${code}`;
   },
 
   /** Returns a PNG data URL suitable for embedding directly in HTML. */

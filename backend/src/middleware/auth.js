@@ -28,9 +28,15 @@ export const requireAuth = asyncHandler(async (req, _res, next) => {
  * verifies the user is an active member. Attaches req.org = { id, role }.
  * Role is resolved SERVER-SIDE — never trusted from the client.
  */
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export const requireOrg = asyncHandler(async (req, _res, next) => {
   const orgId = req.headers['x-org-id'] || req.params.orgId;
   if (!orgId) throw Errors.badRequest('Organization context is required.');
+
+  if (!UUID_REGEX.test(orgId)) {
+    throw Errors.badRequest('Invalid organization ID format.');
+  }
 
   const { data, error } = await supabaseAdmin
     .from('organization_members')

@@ -35,6 +35,14 @@ export const verificationService = {
         .then(() => {}, () => {});
     }
 
+    // Filter private contact info (PII) from public verification payload
+    const safeFields = { ...(cert.fields || {}) };
+    delete safeFields.recipient_email;
+    delete safeFields.email;
+    delete safeFields.phone;
+    delete safeFields.mobile;
+    delete safeFields.address;
+
     return {
       result: status, // valid | revoked | expired
       certificate: {
@@ -46,7 +54,7 @@ export const verificationService = {
         expiresAt: cert.expires_at,
         revokedAt: cert.revoked_at,
         revokeReason: status === 'revoked' ? cert.revoke_reason : undefined,
-        fields: cert.fields,
+        fields: safeFields,
       },
       organization: {
         name: org?.white_label && org?.brand_name ? org.brand_name : org?.name,

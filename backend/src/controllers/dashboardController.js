@@ -28,7 +28,8 @@ export const dashboardController = {
 
   // Global search across certificates, events, and templates.
   search: asyncHandler(async (req, res) => {
-    const q = String(req.query.q || '').trim();
+    const raw = String(req.query.q || '').trim();
+    const q = raw.replace(/[,()%"'\\]/g, ' ').trim();
     if (q.length < 2) return ok(res, { certificates: [], events: [], templates: [] });
     const orgId = req.org.id;
     const [{ data: certs }, { data: events }, { data: templates }] = await Promise.all([

@@ -29,8 +29,10 @@ export const certificateController = {
       .eq('org_id', req.org.id);
 
     if (req.query.search) {
-      const s = req.query.search;
-      q = q.or(`recipient_name.ilike.%${s}%,verification_code.ilike.%${s}%,recipient_email.ilike.%${s}%`);
+      const s = String(req.query.search).replace(/[,()%"'\\]/g, ' ').trim();
+      if (s) {
+        q = q.or(`recipient_name.ilike.%${s}%,verification_code.ilike.%${s}%,recipient_email.ilike.%${s}%`);
+      }
     }
     if (req.query.event_id) q = q.eq('event_id', req.query.event_id);
     if (req.query.status === 'revoked') q = q.eq('status', 'revoked');

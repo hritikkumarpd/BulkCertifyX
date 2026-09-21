@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase.js';
 import { disconnectSocket } from '../lib/socket.js';
+import { setActiveOrg } from '../lib/api.js';
 
 const AuthContext = createContext(null);
 
@@ -38,6 +39,7 @@ export function AuthProvider({ children }) {
     },
     async signOut() {
       disconnectSocket();
+      setActiveOrg(null);
       await supabase.auth.signOut();
     },
     async resetPassword(email) {

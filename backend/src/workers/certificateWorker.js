@@ -1,5 +1,5 @@
 import { Worker } from 'bullmq';
-import { redisConnection } from '../lib/redis.js';
+import { createRedisConnection } from '../lib/redis.js';
 import { QUEUE_NAMES, emailQueue, zipQueue } from '../lib/queues.js';
 import { supabaseAdmin } from '../lib/supabase.js';
 import { certificateService } from '../services/certificateService.js';
@@ -94,7 +94,7 @@ async function processBulkJob(job) {
 
 export function startCertificateWorker() {
   const worker = new Worker(QUEUE_NAMES.certificate, processBulkJob, {
-    connection: redisConnection,
+    connection: createRedisConnection(),
     concurrency: Number(process.env.BULK_CONCURRENCY || 2),
   });
   worker.on('failed', (job, err) => logger.error({ jobId: job?.id, err }, 'certificate job failed'));

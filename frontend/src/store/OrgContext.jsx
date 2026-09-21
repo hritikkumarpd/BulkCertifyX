@@ -11,7 +11,13 @@ export function OrgProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    if (!user) { setOrgs([]); setCurrent(null); setLoading(false); return; }
+    if (!user) {
+      setOrgs([]);
+      setCurrent(null);
+      setActiveOrg(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const list = await apiGet('/organizations');
@@ -19,6 +25,7 @@ export function OrgProvider({ children }) {
       const savedId = getActiveOrg();
       const pick = list.find((o) => o.id === savedId) || list[0] || null;
       if (pick) setActiveOrg(pick.id);
+      else setActiveOrg(null);
       setCurrent(pick);
     } finally {
       setLoading(false);

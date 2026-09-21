@@ -47,7 +47,12 @@ export const csvService = {
     const headers = matrix[0].map((h) => h.trim());
     const rows = matrix.slice(1).map((cells) => {
       const obj = {};
-      headers.forEach((h, idx) => { obj[h] = (cells[idx] ?? '').trim(); });
+      headers.forEach((h, idx) => {
+        const key = String(h).trim();
+        if (key && key !== '__proto__' && key !== 'constructor' && key !== 'prototype') {
+          obj[key] = (cells[idx] ?? '').trim();
+        }
+      });
       return obj;
     });
     return { headers, rows };
