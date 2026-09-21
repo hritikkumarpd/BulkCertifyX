@@ -11,7 +11,6 @@ export function notFoundHandler(req, res) {
 }
 
 // Centralized error handler — never leaks stack traces to clients.
-// eslint-disable-next-line no-unused-vars
 export function errorHandler(err, req, res, _next) {
   if (err instanceof ZodError) {
     return res.status(400).json({

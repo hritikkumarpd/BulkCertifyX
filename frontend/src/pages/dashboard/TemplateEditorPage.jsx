@@ -5,7 +5,6 @@ import { ArrowLeft, Type, Image, QrCode, Minus, PenLine, Building2, Trash2, Eye 
 import { toast } from 'sonner';
 import { apiGet, apiPatch, api } from '../../lib/api.js';
 import { Button, Input, Select, Textarea, Skeleton, Modal } from '../../components/ui.jsx';
-import { cn } from '../../lib/cn.js';
 
 const ASPECT = {
   'a4-landscape': 297 / 210, 'a4-portrait': 210 / 297,

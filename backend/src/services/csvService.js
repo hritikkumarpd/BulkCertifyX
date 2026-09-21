@@ -40,7 +40,7 @@ export const csvService = {
   /** Validate file, parse, and return { headers, rows } (rows are objects). */
   parse({ buffer, size }) {
     if (size > MAX_BYTES) throw Errors.badRequest('CSV exceeds the 5 MB limit.');
-    const text = buffer.toString('utf8').replace(/^﻿/, ''); // strip BOM
+    const text = buffer.toString('utf8').replace(/^\uFEFF/, ''); // strip BOM
     const matrix = parseCsv(text);
     if (matrix.length < 2) throw Errors.badRequest('CSV must have a header row and at least one data row.');
 
