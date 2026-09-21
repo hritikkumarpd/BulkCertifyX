@@ -1,7 +1,8 @@
 import axios from 'axios';
 import { supabase } from './supabase.js';
 
-const baseURL = `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api`;
+const rawApiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3000').trim().replace(/\/+$/, '');
+const baseURL = `${rawApiUrl}/api`;
 
 export const api = axios.create({ baseURL, timeout: 60000 });
 
