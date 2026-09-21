@@ -1,6 +1,8 @@
 import { Errors } from '../lib/errors.js';
 
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+const MAX_ROWS = 10000;            // hard cap on data rows (resource-exhaustion guard)
+const MAX_CELL_LEN = 2000;         // per-cell length cap (prevents pathological payloads)
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
@@ -44,13 +46,18 @@ export const csvService = {
     const matrix = parseCsv(text);
     if (matrix.length < 2) throw Errors.badRequest('CSV must have a header row and at least one data row.');
 
+    const dataRowCount = matrix.length - 1;
+    if (dataRowCount > MAX_ROWS) {
+      throw Errors.badRequest(`CSV has too many rows (${dataRowCount}). The limit is ${MAX_ROWS} per upload.`);
+    }
+
     const headers = matrix[0].map((h) => h.trim());
     const rows = matrix.slice(1).map((cells) => {
       const obj = {};
       headers.forEach((h, idx) => {
         const key = String(h).trim();
         if (key && key !== '__proto__' && key !== 'constructor' && key !== 'prototype') {
-          obj[key] = (cells[idx] ?? '').trim();
+          obj[key] = (cells[idx] ?? '').trim().slice(0, MAX_CELL_LEN);
         }
       });
       return obj;

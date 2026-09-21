@@ -11,9 +11,16 @@ const BUCKET = env.supabase.bucket;
  *   organizations/{orgId}/bulk/...
  *   organizations/{orgId}/logos/...
  */
+// Strip anything that could escape the org-namespaced prefix (path traversal).
+function safeSegment(value) {
+  return String(value ?? '').replace(/[^A-Za-z0-9._-]/g, '_').replace(/\.{2,}/g, '_');
+}
+
 export const storageService = {
   path(orgId, kind, filename) {
-    return `organizations/${orgId}/${kind}/${filename}`;
+    // orgId and kind are server-controlled; filename is sanitized defensively so
+    // a future caller passing user input cannot traverse out of the org prefix.
+    return `organizations/${safeSegment(orgId)}/${safeSegment(kind)}/${safeSegment(filename)}`;
   },
 
   async upload(path, body, contentType) {

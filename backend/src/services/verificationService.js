@@ -1,6 +1,48 @@
 import { supabaseAdmin } from '../lib/supabase.js';
 import { certificateService } from './certificateService.js';
 
+// Fields that are surfaced through dedicated, intentionally-public response
+// keys (recipientName / eventName / issuedBy / dates). They never need to
+// appear again inside the generic `fields` map.
+const SURFACED_KEYS = new Set([
+  'recipient_name', 'event_name', 'issued_by', 'issue_date', 'event_date',
+  'organization_name', 'verification_code',
+]);
+
+// Hard denylist of contact/PII keys that must NEVER be public, even if a
+// template author references them. Belt-and-suspenders on top of the allowlist.
+const PII_KEYS = new Set([
+  'recipient_email', 'email', 'phone', 'mobile', 'address', 'dob',
+  'date_of_birth', 'national_id', 'aadhaar', 'ssn', 'pan',
+]);
+
+/** Extract every {{token}} variable name referenced by a template design. */
+export function extractTemplateTokens(design) {
+  const tokens = new Set();
+  const elements = design?.elements || [];
+  for (const el of elements) {
+    if (typeof el?.text !== 'string') continue;
+    for (const m of el.text.matchAll(/\{\{\s*([\w.]+)\s*\}\}/g)) {
+      tokens.add(m[1]);
+    }
+  }
+  return tokens;
+}
+
+/**
+ * Build the public `fields` map: ONLY values that (a) the template actually
+ * prints on the certificate and (b) are not surfaced elsewhere or on the PII
+ * denylist. This is an allowlist — a column the org never rendered stays private.
+ */
+export function publicFieldsFor(fields = {}, tokenNames = new Set()) {
+  const out = {};
+  for (const [key, value] of Object.entries(fields)) {
+    if (SURFACED_KEYS.has(key) || PII_KEYS.has(key)) continue;
+    if (tokenNames.has(key)) out[key] = value;
+  }
+  return out;
+}
+
 /**
  * Public verification. Extremely fast (indexed verification_code lookup) and
  * deliberately minimal in what it exposes — no internal IDs, no private org
@@ -20,10 +62,12 @@ export const verificationService = {
 
     const status = certificateService.deriveStatus(cert);
 
-    // Fetch public-safe org branding + event name.
-    const [{ data: org }, { data: event }] = await Promise.all([
+    // Fetch public-safe org branding, event name, and the template design so we
+    // can restrict `fields` to exactly what the certificate actually displays.
+    const [{ data: org }, { data: event }, { data: template }] = await Promise.all([
       supabaseAdmin.from('organizations').select('name, brand_name, logo_url, brand_color, white_label').eq('id', cert.org_id).single(),
       cert.event_id ? supabaseAdmin.from('events').select('name, issued_by').eq('id', cert.event_id).maybeSingle() : Promise.resolve({ data: null }),
+      cert.template_id ? supabaseAdmin.from('templates').select('design').eq('id', cert.template_id).maybeSingle() : Promise.resolve({ data: null }),
     ]);
 
     // Fire-and-forget analytics — verification must not fail if logging does.
@@ -35,13 +79,9 @@ export const verificationService = {
         .then(() => {}, () => {});
     }
 
-    // Filter private contact info (PII) from public verification payload
-    const safeFields = { ...(cert.fields || {}) };
-    delete safeFields.recipient_email;
-    delete safeFields.email;
-    delete safeFields.phone;
-    delete safeFields.mobile;
-    delete safeFields.address;
+    // Allowlist: only fields the template renders are considered public.
+    const tokens = extractTemplateTokens(template?.design);
+    const safeFields = publicFieldsFor(cert.fields, tokens);
 
     return {
       result: status, // valid | revoked | expired
