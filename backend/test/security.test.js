@@ -54,7 +54,7 @@ test('CSV parser handles quoted fields with commas and escaped quotes', () => {
   assert.deepEqual(matrix, [['a', 'b'], ['x,y', 'he said "hi"']]);
 });
 
-// ── Render: XSS escaping of recipient-controlled data ──────────────────────
+// ── Render: XSS escaping of recipient-controlled data & template text ──────
 test('recipient data is HTML-escaped in rendered certificate', () => {
   const template = {
     page_size: 'a4-landscape',
@@ -67,6 +67,44 @@ test('recipient data is HTML-escaped in rendered certificate', () => {
   });
   assert.ok(!html.includes('<script>alert(1)</script>'), 'raw script tag must not appear');
   assert.ok(html.includes('&lt;script&gt;'), 'script must be escaped');
+});
+
+test('template text itself is HTML-escaped to prevent Stored XSS', () => {
+  const template = {
+    page_size: 'a4-landscape',
+    design: { background: '#fff', elements: [{ id: '1', type: 'text', x: 10, y: 10, text: '<img src=x onerror=alert(2)> {{course}}' }] },
+  };
+  const html = renderService.buildHtml({
+    template,
+    data: { course: 'Math' },
+    qrDataUrl: '',
+  });
+  assert.ok(!html.includes('<img src=x onerror=alert(2)>'), 'raw html in template text must not appear');
+  assert.ok(html.includes('&lt;img src=x onerror=alert(2)&gt; Math'), 'template text must be escaped');
+});
+
+test('dangerous URI schemes in images and background are discarded', () => {
+  const template = {
+    page_size: 'a4-landscape',
+    design: {
+      background: '#fff',
+      backgroundImage: 'javascript:alert(1)',
+      elements: [
+        { id: '1', type: 'image', x: 10, y: 10, src: 'file:///etc/passwd' },
+        { id: '2', type: 'logo', x: 20, y: 20, src: 'javascript:void(0)' },
+        { id: '3', type: 'image', x: 30, y: 30, src: 'https://example.com/logo.png' },
+      ],
+    },
+  };
+  const html = renderService.buildHtml({
+    template,
+    data: {},
+    qrDataUrl: '',
+  });
+  assert.ok(!html.includes('javascript:alert(1)'), 'javascript background must be blocked');
+  assert.ok(!html.includes('file:///etc/passwd'), 'file:/// image src must be blocked');
+  assert.ok(!html.includes('javascript:void(0)'), 'javascript logo src must be blocked');
+  assert.ok(html.includes('https://example.com/logo.png'), 'https image src must be allowed');
 });
 
 // ── Codes: format + API key hashing ────────────────────────────────────────

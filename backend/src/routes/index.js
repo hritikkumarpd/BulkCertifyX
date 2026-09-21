@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth, requireOrg, requireRole } from '../middleware/auth.js';
-import { generalLimiter, bulkLimiter, billingLimiter } from '../middleware/rateLimit.js';
+import { generalLimiter, bulkLimiter, billingLimiter, certIssueLimiter } from '../middleware/rateLimit.js';
 
 import { organizationController } from '../controllers/organizationController.js';
 import { templateController } from '../controllers/templateController.js';
@@ -59,7 +59,7 @@ router.post('/events/:id/archive', eventController.archive);
 
 // Certificates
 router.get('/certificates', certificateController.list);
-router.post('/certificates', certificateController.issue);
+router.post('/certificates', certIssueLimiter, certificateController.issue);
 router.get('/certificates/:id', certificateController.get);
 router.get('/certificates/:id/download', certificateController.download);
 router.post('/certificates/:id/revoke', certificateController.revoke);

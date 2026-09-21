@@ -16,17 +16,28 @@ import { redisConnection } from './lib/redis.js';
 
 export function createApp() {
   const app = express();
+  app.set('trust proxy', 1);
   app.use(helmet({ crossOriginResourcePolicy: false }));
 
-  const corsOrigin = env.isProd
-    ? env.frontendUrl
-    : (origin, callback) => {
-        if (!origin || /^http:\/\/localhost:\d+$/.test(origin) || /^http:\/\/127\.0\.0\.1:\d+$/.test(origin)) {
-          callback(null, true);
-        } else {
-          callback(null, origin === env.frontendUrl);
-        }
-      };
+  // Collect allowed origins (supports comma-separated frontend URLs)
+  const allowedOrigins = [
+    ...env.frontendUrl.split(',').map((u) => u.trim().replace(/\/+$/, '')),
+    ...(env.publicAppUrl ? env.publicAppUrl.split(',').map((u) => u.trim().replace(/\/+$/, '')) : []),
+  ].filter(Boolean);
+
+  const corsOrigin = (origin, callback) => {
+    if (!origin) return callback(null, true);
+    const cleanOrigin = origin.replace(/\/+$/, '');
+    if (!env.isProd) {
+      if (/^http:\/\/localhost:\d+$/.test(origin) || /^http:\/\/127\.0\.0\.1:\d+$/.test(origin)) {
+        return callback(null, true);
+      }
+    }
+    if (allowedOrigins.includes(cleanOrigin)) {
+      return callback(null, true);
+    }
+    callback(null, false);
+  };
   app.use(cors({ origin: corsOrigin, credentials: true }));
   app.use(pinoHttp({ logger }));
 

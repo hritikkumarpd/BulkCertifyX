@@ -19,4 +19,5 @@ export const verifyLimiter = make(60 * 1000, 60, 'RATE_LIMITED');             //
 export const apiLimiter = make(60 * 1000, 120, 'RATE_LIMITED');               // authenticated public API
 export const bulkLimiter = make(60 * 1000, 10, 'RATE_LIMITED');               // bulk job creation
 export const billingLimiter = make(60 * 1000, 30, 'RATE_LIMITED');            // billing operations
+export const certIssueLimiter = make(60 * 1000, 20, 'RATE_LIMITED');           // single cert generation
 export const generalLimiter = make(60 * 1000, 300, 'RATE_LIMITED');           // default dashboard API

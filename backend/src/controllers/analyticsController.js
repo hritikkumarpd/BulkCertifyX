@@ -53,17 +53,45 @@ export const analyticsController = {
   }),
 
   events: asyncHandler(async (req, res) => {
-    const { data: events } = await supabaseAdmin.from('events').select('id, name').eq('org_id', req.org.id);
-    const stats = await Promise.all(
-      (events || []).map(async (e) => {
-        const [{ count: certs }, { count: verifs }] = await Promise.all([
-          supabaseAdmin.from('certificates').select('id', { count: 'exact', head: true }).eq('event_id', e.id),
-          supabaseAdmin.from('verification_logs').select('id', { count: 'exact', head: true }).in('certificate_id',
-            (await supabaseAdmin.from('certificates').select('id').eq('event_id', e.id)).data?.map((c) => c.id) || ['00000000-0000-0000-0000-000000000000']),
-        ]);
-        return { id: e.id, name: e.name, certificates: certs || 0, verifications: verifs || 0, verificationRate: certs ? Math.round(((verifs || 0) / certs) * 100) : 0 };
-      }),
-    );
+    const orgId = req.org.id;
+    const { data: events } = await supabaseAdmin.from('events').select('id, name').eq('org_id', orgId);
+    if (!events?.length) return ok(res, []);
+
+    const eventIds = events.map((e) => e.id);
+    const [{ data: certs }, { data: verifs }] = await Promise.all([
+      supabaseAdmin.from('certificates').select('id, event_id').eq('org_id', orgId).in('event_id', eventIds),
+      supabaseAdmin.from('verification_logs').select('certificate_id').eq('org_id', orgId),
+    ]);
+
+    const certToEvent = new Map();
+    const certCounts = {};
+    for (const c of certs || []) {
+      if (c.event_id) {
+        certToEvent.set(c.id, c.event_id);
+        certCounts[c.event_id] = (certCounts[c.event_id] || 0) + 1;
+      }
+    }
+
+    const verifCounts = {};
+    for (const v of verifs || []) {
+      const evId = certToEvent.get(v.certificate_id);
+      if (evId) {
+        verifCounts[evId] = (verifCounts[evId] || 0) + 1;
+      }
+    }
+
+    const stats = events.map((e) => {
+      const c = certCounts[e.id] || 0;
+      const v = verifCounts[e.id] || 0;
+      return {
+        id: e.id,
+        name: e.name,
+        certificates: c,
+        verifications: v,
+        verificationRate: c ? Math.round((v / c) * 100) : 0,
+      };
+    });
+
     return ok(res, stats);
   }),
 };

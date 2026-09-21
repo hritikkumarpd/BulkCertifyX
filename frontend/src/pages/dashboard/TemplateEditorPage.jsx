@@ -228,7 +228,7 @@ export default function TemplateEditorPage() {
       </div>
 
       <Modal open={!!previewHtml} onClose={() => setPreviewHtml(null)} title="Preview">
-        <iframe title="preview" srcDoc={previewHtml} className="h-[420px] w-full rounded-md border border-line" />
+        <iframe title="preview" sandbox="allow-same-origin" srcDoc={previewHtml} className="h-[420px] w-full rounded-md border border-line" />
       </Modal>
     </div>
   );

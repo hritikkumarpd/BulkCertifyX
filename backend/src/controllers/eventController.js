@@ -16,17 +16,28 @@ const upsertSchema = z.object({
 
 export const eventController = {
   list: asyncHandler(async (req, res) => {
-    // Include certificate + verification counts per event.
+    // Include certificate counts per event (batched to prevent N+1 queries).
     const { data: events } = await supabaseAdmin
       .from('events').select('*').eq('org_id', req.org.id).order('created_at', { ascending: false });
 
-    const withCounts = await Promise.all(
-      (events || []).map(async (e) => {
-        const { count: certCount } = await supabaseAdmin
-          .from('certificates').select('id', { count: 'exact', head: true }).eq('event_id', e.id);
-        return { ...e, certificate_count: certCount || 0 };
-      }),
-    );
+    if (!events?.length) return ok(res, []);
+
+    const eventIds = events.map((e) => e.id);
+    const { data: certs } = await supabaseAdmin
+      .from('certificates')
+      .select('event_id')
+      .eq('org_id', req.org.id)
+      .in('event_id', eventIds);
+
+    const counts = {};
+    for (const c of certs || []) {
+      if (c.event_id) counts[c.event_id] = (counts[c.event_id] || 0) + 1;
+    }
+
+    const withCounts = events.map((e) => ({
+      ...e,
+      certificate_count: counts[e.id] || 0,
+    }));
     return ok(res, withCounts);
   }),
 

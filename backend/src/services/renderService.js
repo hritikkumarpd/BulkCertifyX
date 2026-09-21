@@ -20,8 +20,9 @@ function esc(s) {
 }
 
 // Replace {{variable}} tokens with values from `data`. Unknown tokens render empty.
+// Both the template text and merged data are escaped to prevent XSS.
 function merge(text, data) {
-  return String(text ?? '').replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key) => esc(data[key] ?? ''));
+  return esc(text ?? '').replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key) => esc(data[key] ?? ''));
 }
 
 function renderElement(el, data, qrDataUrl) {
@@ -47,7 +48,7 @@ function renderElement(el, data, qrDataUrl) {
     case 'image':
     case 'logo':
     case 'signature': {
-      if (!el.src) return '';
+      if (!el.src || !/^(https?:\/\/|data:image\/)/i.test(el.src)) return '';
       return `<img src="${esc(el.src)}" style="${pos}${el.height != null ? `height:${el.height}%;` : ''}object-fit:contain;" />`;
     }
     case 'qr': {
@@ -72,7 +73,7 @@ export const renderService = {
     const size = PAGE_SIZES[template.page_size] || PAGE_SIZES['a4-landscape'];
     const design = template.design || { background: '#ffffff', elements: [] };
     const bg = design.background || '#ffffff';
-    const bgImage = design.backgroundImage
+    const bgImage = (design.backgroundImage && /^(https?:\/\/|data:image\/)/i.test(design.backgroundImage))
       ? `background-image:url('${esc(design.backgroundImage)}');background-size:cover;background-position:center;`
       : '';
 
