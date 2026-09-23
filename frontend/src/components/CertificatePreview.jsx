@@ -1,9 +1,9 @@
 // A tasteful sample certificate rendered as inline SVG for marketing/verify pages.
 // (The real certificates are Puppeteer-rendered PDFs from the template engine.)
 export default function CertificatePreview({
-  recipient = 'John Doe',
+  recipient = 'Hritik Kumar',
   course = 'Full Stack Development',
-  org = 'BulkCertifyX Demo Organization',
+  org = 'BulkCertifyX',
   code = 'CERT-A7K2-X9PQ',
 }) {
   return (

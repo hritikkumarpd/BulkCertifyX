@@ -5,6 +5,7 @@ import { extractTemplateTokens, publicFieldsFor } from '../src/services/verifica
 import { csvService, parseCsv } from '../src/services/csvService.js';
 import { renderService } from '../src/services/renderService.js';
 import { generateVerificationCode, generateApiKey, hashApiKey } from '../src/utils/codes.js';
+import { emailService } from '../src/services/emailService.js';
 
 // ── Verification: excessive-data-exposure / PII allowlist ──────────────────
 test('verification exposes only template-rendered, non-PII fields', () => {
@@ -120,4 +121,23 @@ test('API key is high-entropy and stored only as a sha256 hash', () => {
   assert.equal(hash, hashApiKey(raw));
   assert.notEqual(hash, raw, 'the raw key must never equal its stored hash');
   assert.equal(hash.length, 64);
+});
+
+// ── Email: recipient/CSV data is escaped, unsafe URLs neutralized ──────────
+test('certificate email escapes recipient-controlled data and unsafe URLs', () => {
+  const html = emailService._certificateEmailHtml({
+    recipientName: '<script>alert(1)</script>',
+    eventName: '<img src=x onerror=alert(2)>',
+    orgName: 'Acme & Co',
+    brandColor: 'javascript:evil',            // invalid → must fall back to default color
+    verifyUrl: 'javascript:alert(3)',         // unsafe scheme → collapses to #
+    downloadUrl: 'https://cdn.example.com/c.pdf',
+    footer: 'Team',
+  });
+  assert.ok(!html.includes('<script>alert(1)</script>'), 'recipient name must be escaped');
+  assert.ok(html.includes('&lt;script&gt;'), 'escaped recipient name present');
+  assert.ok(!html.includes('<img src=x onerror=alert(2)>'), 'event name must be escaped');
+  assert.ok(!html.includes('javascript:alert(3)'), 'javascript: verify URL must be dropped');
+  assert.ok(!html.includes('background:javascript:evil'), 'invalid brand color must not be injected');
+  assert.ok(html.includes('https://cdn.example.com/c.pdf'), 'valid https download URL is allowed');
 });

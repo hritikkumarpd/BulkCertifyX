@@ -12,18 +12,37 @@ function sanitize(html) {
     .replace(/javascript:/gi, '');
 }
 
+// Escape recipient/CSV-derived values before interpolating into email HTML so
+// a crafted recipient_name / event_name cannot inject markup or phishing links.
+function esc(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Only allow http(s) URLs in href attributes; anything else (javascript:,
+// data:, file:) collapses to a harmless anchor.
+function safeUrl(url) {
+  const s = String(url ?? '').trim();
+  return /^https?:\/\//i.test(s) ? esc(s) : '#';
+}
+
 function certificateEmailHtml({ recipientName, eventName, orgName, brandColor, verifyUrl, downloadUrl, footer }) {
+  const color = /^#[0-9a-f]{3,8}$/i.test(String(brandColor || '')) ? brandColor : '#4F46E5';
   return `<!doctype html><html><body style="margin:0;background:#f8fafc;font-family:Inter,Arial,sans-serif;color:#111827;">
   <div style="max-width:560px;margin:0 auto;padding:32px 24px;">
     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:32px;">
-      <div style="height:4px;width:48px;background:${brandColor || '#4F46E5'};border-radius:2px;margin-bottom:24px;"></div>
-      <h1 style="font-size:20px;margin:0 0 8px;">Congratulations, ${recipientName}.</h1>
+      <div style="height:4px;width:48px;background:${color};border-radius:2px;margin-bottom:24px;"></div>
+      <h1 style="font-size:20px;margin:0 0 8px;">Congratulations, ${esc(recipientName)}.</h1>
       <p style="color:#64748b;font-size:15px;line-height:1.6;margin:0 0 24px;">
-        Your certificate for <strong>${eventName}</strong> from ${orgName} has been issued.
+        Your certificate for <strong>${esc(eventName)}</strong> from ${esc(orgName)} has been issued.
       </p>
-      <a href="${downloadUrl}" style="display:inline-block;background:${brandColor || '#4F46E5'};color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600;font-size:14px;">Download certificate</a>
+      <a href="${safeUrl(downloadUrl)}" style="display:inline-block;background:${color};color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600;font-size:14px;">Download certificate</a>
       <p style="margin:24px 0 0;font-size:14px;">
-        <a href="${verifyUrl}" style="color:${brandColor || '#4F46E5'};">Verify this certificate</a>
+        <a href="${safeUrl(verifyUrl)}" style="color:${color};">Verify this certificate</a>
       </p>
     </div>
     <p style="text-align:center;color:#94a3b8;font-size:12px;margin-top:20px;">${sanitize(footer || 'Powered by BulkCertifyX')}</p>
@@ -31,6 +50,9 @@ function certificateEmailHtml({ recipientName, eventName, orgName, brandColor, v
 }
 
 export const emailService = {
+  // Exposed for testing: the certificate email HTML builder (escaping check).
+  _certificateEmailHtml: certificateEmailHtml,
+
   async sendCertificate({ to, recipientName, eventName, orgName, brandColor, verifyUrl, downloadUrl, footer, from }) {
     if (!resend) {
       logger.warn('Resend not configured — skipping email send (dev).');

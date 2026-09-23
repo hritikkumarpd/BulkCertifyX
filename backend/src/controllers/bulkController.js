@@ -10,10 +10,12 @@ import { storageService } from '../services/storageService.js';
 export const bulkController = {
   // Step 1-2: parse an uploaded CSV (raw text in body) and suggest a mapping.
   parse: asyncHandler(async (req, res) => {
-    const schema = z.object({ csv: z.string().min(1), size: z.number().optional() });
-    const { csv, size } = schema.parse(req.body);
+    const schema = z.object({ csv: z.string().min(1) });
+    const { csv } = schema.parse(req.body);
     const buffer = Buffer.from(csv, 'utf8');
-    const { headers, rows } = csvService.parse({ buffer, size: size ?? buffer.length });
+    // Always use the real byte length — never a client-supplied size (which
+    // could be forged to bypass the size cap).
+    const { headers, rows } = csvService.parse({ buffer, size: buffer.byteLength });
     const suggestedMap = csvService.autoMap(headers);
     return ok(res, {
       headers,
@@ -30,7 +32,8 @@ export const bulkController = {
       columnMap: z.record(z.string()),
     });
     const { csv, columnMap } = schema.parse(req.body);
-    const { rows } = csvService.parse({ buffer: Buffer.from(csv, 'utf8'), size: csv.length });
+    const buffer = Buffer.from(csv, 'utf8');
+    const { rows } = csvService.parse({ buffer, size: buffer.byteLength });
     const result = csvService.validate({ rows, columnMap });
     return ok(res, {
       validCount: result.validCount,
@@ -49,7 +52,8 @@ export const bulkController = {
     });
     const { csv, columnMap, template_id, event_id } = schema.parse(req.body);
 
-    const { rows } = csvService.parse({ buffer: Buffer.from(csv, 'utf8'), size: csv.length });
+    const buffer = Buffer.from(csv, 'utf8');
+    const { rows } = csvService.parse({ buffer, size: buffer.byteLength });
     const { mapped } = csvService.validate({ rows, columnMap });
     const validRows = mapped.filter((m) => m.valid);
     if (!validRows.length) throw Errors.badRequest('No valid rows to generate certificates from.');

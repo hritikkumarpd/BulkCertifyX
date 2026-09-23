@@ -2,16 +2,27 @@ import { useQuery } from '@tanstack/react-query';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { apiGet } from '../../lib/api.js';
 import { StatTile, Skeleton, EmptyState } from '../../components/ui.jsx';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3, AlertCircle } from 'lucide-react';
 
 const shortDate = (d) => d.slice(5); // MM-DD
 
 export default function AnalyticsPage() {
-  const { data: overview, isLoading } = useQuery({ queryKey: ['analytics', 'overview'], queryFn: () => apiGet('/analytics/overview') });
+  const { data: overview, isLoading, isError } = useQuery({ queryKey: ['analytics', 'overview'], queryFn: () => apiGet('/analytics/overview') });
   const { data: trends } = useQuery({ queryKey: ['analytics', 'trends'], queryFn: () => apiGet('/analytics/trends') });
   const { data: events } = useQuery({ queryKey: ['analytics', 'events'], queryFn: () => apiGet('/analytics/events') });
 
   if (isLoading) return <div className="space-y-4"><Skeleton className="h-8 w-40" /><div className="grid grid-cols-2 gap-4 lg:grid-cols-5">{[0,1,2,3,4].map(i => <Skeleton key={i} className="h-24" />)}</div><Skeleton className="h-64" /></div>;
+
+  // Guard against a failed/empty overview fetch — without this, reading
+  // overview.certificatesIssued below throws and blanks the whole page.
+  if (isError || !overview) {
+    return (
+      <div>
+        <h1 className="text-2xl font-bold text-ink">Analytics</h1>
+        <EmptyState icon={AlertCircle} title="Couldn't load analytics" description="Something went wrong fetching your analytics. Please refresh to try again." />
+      </div>
+    );
+  }
 
   return (
     <div>

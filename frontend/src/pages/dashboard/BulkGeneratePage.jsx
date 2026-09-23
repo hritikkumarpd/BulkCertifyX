@@ -88,21 +88,28 @@ export default function BulkGeneratePage() {
     if (!jobId) return;
     let socket;
     let mounted = true;
+    // Keep handler references local to THIS effect run so cleanup removes
+    // exactly the listeners it added — never a shared slot on the singleton
+    // socket that another mount/run could overwrite.
+    const onProgress = (p) => {
+      // Merge, don't replace — a frame may omit some counters, and replacing
+      // would render undefined in the StatTiles.
+      if (mounted && p.jobId === jobId) setProgress((prev) => ({ ...prev, ...p }));
+    };
+    const onComplete = (p) => {
+      if (mounted && p.jobId === jobId) { setFinalStats(p); setStep(4); }
+    };
     (async () => {
       socket = await getSocket();
-      const onProgress = (p) => { if (mounted && p.jobId === jobId) setProgress(p); };
-      const onComplete = (p) => {
-        if (mounted && p.jobId === jobId) { setFinalStats(p); setStep(4); }
-      };
+      if (!mounted) return; // unmounted before socket resolved
       socket.on('bulk:progress', onProgress);
       socket.on('bulk:complete', onComplete);
-      socket._bcxHandlers = { onProgress, onComplete };
     })();
     return () => {
       mounted = false;
-      if (socket?._bcxHandlers) {
-        socket.off('bulk:progress', socket._bcxHandlers.onProgress);
-        socket.off('bulk:complete', socket._bcxHandlers.onComplete);
+      if (socket) {
+        socket.off('bulk:progress', onProgress);
+        socket.off('bulk:complete', onComplete);
       }
     };
   }, [jobId]);

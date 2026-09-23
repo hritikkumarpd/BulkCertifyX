@@ -70,7 +70,11 @@ export const domainController = {
   }),
 
   remove: asyncHandler(async (req, res) => {
-    await supabaseAdmin.from('custom_domains').delete().eq('id', req.params.id).eq('org_id', req.org.id);
+    const { data: domain } = await supabaseAdmin
+      .from('custom_domains').select('id, hostname').eq('id', req.params.id).eq('org_id', req.org.id).maybeSingle();
+    if (!domain) throw Errors.notFound('Domain not found.');
+    await supabaseAdmin.from('custom_domains').delete().eq('id', domain.id).eq('org_id', req.org.id);
+    await auditService.log({ orgId: req.org.id, userId: req.user.id, action: 'domain.removed', resourceType: 'domain', resourceId: domain.id, metadata: { hostname: domain.hostname } });
     return ok(res, { removed: true });
   }),
 };

@@ -28,29 +28,57 @@ async function processBulkJob(job) {
   ]);
   if (!template) throw new Error('Template missing for bulk job');
 
+  // A prior attempt of this job may have died mid-row, leaving rows stuck in
+  // 'processing'. Reclaim them as pending so this attempt can finish them.
+  await supabaseAdmin.from('bulk_job_rows')
+    .update({ status: 'pending' }).eq('job_id', jobId).eq('status', 'processing').is('certificate_id', null);
+
   const { data: rows } = await supabaseAdmin
     .from('bulk_job_rows').select('*').eq('job_id', jobId).eq('status', 'pending').order('row_index');
 
-  let successful = bulkJob.successful || 0;
-  let failed = 0;
-  let processed = bulkJob.processed || 0;
+  // Seed counters from the AUTHORITATIVE current row states, not from the stored
+  // job row (which, on a retry, already reflects the previous run and would push
+  // progress past 100% and misclassify an all-failed retry as "completed").
+  const [{ count: successSoFar }, { count: failedSoFar }] = await Promise.all([
+    supabaseAdmin.from('bulk_job_rows').select('id', { count: 'exact', head: true }).eq('job_id', jobId).eq('status', 'success'),
+    supabaseAdmin.from('bulk_job_rows').select('id', { count: 'exact', head: true }).eq('job_id', jobId).eq('status', 'failed'),
+  ]);
+  let successful = successSoFar || 0;
+  let failed = failedSoFar || 0;
+  let processed = successful + failed;
+  let failedThisRun = 0;
   const total = bulkJob.total_rows;
 
   for (const row of rows || []) {
+    // Idempotency: if this row was already issued (crash between issue and the
+    // status write), don't create a second certificate — just reconcile status.
+    if (row.certificate_id) {
+      await supabaseAdmin.from('bulk_job_rows').update({ status: 'success', error: null }).eq('id', row.id);
+      successful += 1; processed += 1;
+      continue;
+    }
+
+    // Claim the row so a concurrent/retried run won't pick it up and duplicate.
+    const { data: claimed } = await supabaseAdmin.from('bulk_job_rows')
+      .update({ status: 'processing' }).eq('id', row.id).eq('status', 'pending').select('id').maybeSingle();
+    if (!claimed) continue; // another attempt already took it
+
     try {
       const cert = await certificateService.issueOne({
         org, event, template, row: row.data, createdBy: bulkJob.created_by, host,
       });
-      await supabaseAdmin.from('bulk_job_rows')
+      const { error: upErr } = await supabaseAdmin.from('bulk_job_rows')
         .update({ status: 'success', certificate_id: cert.id, error: null }).eq('id', row.id);
+      if (upErr) logger.error({ upErr, rowId: row.id, certId: cert.id }, 'row issued but status update failed');
       successful += 1;
 
-      // Queue delivery email if the org's plan allows it and there's an address.
+      // Queue delivery email if there's an address.
       if (cert.recipient_email) {
         await emailQueue.add('certificate', { certificateId: cert.id, orgId }, { jobId: `email-${cert.id}` }).catch(() => {});
       }
     } catch (err) {
       failed += 1;
+      failedThisRun += 1;
       await supabaseAdmin.from('bulk_job_rows')
         .update({ status: 'failed', error: String(err.message || err).slice(0, 500) }).eq('id', row.id);
       logger.warn({ err, rowId: row.id }, 'bulk row failed');
@@ -60,13 +88,15 @@ async function processBulkJob(job) {
     await supabaseAdmin.from('bulk_jobs').update({ processed, successful, failed }).eq('id', jobId);
     publishProgress(orgId, 'bulk:progress', {
       jobId, total, processed, successful, failed,
-      percent: total ? Math.round((processed / total) * 100) : 100,
+      percent: total ? Math.min(100, Math.round((processed / total) * 100)) : 100,
     });
   }
 
-  // Reconcile quota: release slots reserved for rows that permanently failed.
-  if (failed > 0) {
-    await usageService.releaseCertificates(orgId, failed, reservedPeriod).catch(() => {});
+  // Reconcile quota: release slots reserved for rows that failed IN THIS RUN
+  // (rows that failed in a previous run had their quota released then, and
+  // retryFailed re-reserves for its own batch).
+  if (failedThisRun > 0) {
+    await usageService.releaseCertificates(orgId, failedThisRun, reservedPeriod).catch(() => {});
   }
 
   const finalStatus = failed === 0 ? 'completed' : successful === 0 ? 'failed' : 'completed_with_errors';

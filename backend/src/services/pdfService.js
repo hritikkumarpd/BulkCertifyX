@@ -52,14 +52,21 @@ async function acquire() {
     active += 1;
     return;
   }
+  // Wait for a slot. release() hands the slot directly to us (it does NOT
+  // decrement `active`), so we must NOT increment again on resume — otherwise
+  // a concurrent acquire() could slip in during the wake microtask and push
+  // `active` above MAX_CONCURRENT.
   await new Promise((resolve) => waiters.push(resolve));
-  active += 1;
 }
 
 function release() {
-  active = Math.max(0, active - 1);
   const next = waiters.shift();
-  if (next) next();
+  if (next) {
+    // Hand the slot to the next waiter without touching `active`.
+    next();
+  } else {
+    active = Math.max(0, active - 1);
+  }
 }
 
 export const pdfService = {
@@ -83,15 +90,20 @@ export const pdfService = {
       await page.setRequestInterception(true);
       page.on('request', (req) => {
         const url = req.url().toLowerCase();
-        if (
-          url.startsWith('file:') ||
-          url.includes('169.254.169.254') ||
-          url.includes('127.0.0.1') ||
-          url.includes('localhost')
-        ) {
-          req.abort();
-        } else {
-          req.continue();
+        try {
+          if (
+            url.startsWith('file:') ||
+            url.includes('169.254.169.254') ||
+            url.includes('127.0.0.1') ||
+            url.includes('localhost')
+          ) {
+            req.abort();
+          } else {
+            req.continue();
+          }
+        } catch {
+          // Request may already be handled under a race; ignore so the render
+          // promise isn't rejected by a duplicate abort/continue.
         }
       });
 
@@ -101,6 +113,7 @@ export const pdfService = {
         width: `${w}mm`,
         height: `${h}mm`,
         pageRanges: '1',
+        timeout: 30000,
       });
       return pdf;
     } finally {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Award, Plus, Search } from 'lucide-react';
@@ -19,12 +19,15 @@ export default function CertificatesPage() {
   const [eventId, setEventId] = useState('');
   const [modal, setModal] = useState(false);
 
-  // debounce search input
-  useState(() => {});
+  // Debounce the search input. The timer is per-instance (useRef, not a window
+  // global) and cleared on unmount so we never setState after unmount or let
+  // two mounted pages clobber each other's timer.
+  const searchTimer = useRef(null);
+  useEffect(() => () => clearTimeout(searchTimer.current), []);
   const onSearch = (v) => {
     setSearch(v);
-    clearTimeout(window.__certSearch);
-    window.__certSearch = setTimeout(() => { setDebounced(v); setPage(1); }, 300);
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => { setDebounced(v); setPage(1); }, 300);
   };
 
   const { data: templates } = useQuery({ queryKey: ['templates'], queryFn: () => apiGet('/templates') });

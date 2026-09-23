@@ -22,13 +22,23 @@ async function processEmail(job) {
   const { data: cert } = await supabaseAdmin.from('certificates').select('*').eq('id', certificateId).single();
   if (!cert || !cert.recipient_email) return { skipped: 'no_recipient' };
 
+  // Idempotency: if a previous attempt already delivered this email, don't send
+  // again on a BullMQ retry (retries re-run the whole handler).
+  if (cert.email_status === 'sent') return { skipped: 'already_sent' };
+
   const { data: org } = await supabaseAdmin.from('organizations').select('*').eq('id', orgId).single();
+  if (!org) {
+    // Org deleted between issuance and delivery — nothing we can do; don't retry.
+    logger.warn({ certificateId, orgId }, 'email skipped: org not found');
+    await supabaseAdmin.from('certificates').update({ email_status: 'failed' }).eq('id', certificateId);
+    return { skipped: 'no_org' };
+  }
 
   await supabaseAdmin.from('certificates').update({ email_status: 'queued' }).eq('id', certificateId);
 
   try {
     const downloadUrl = cert.pdf_url ? await storageService.signedUrl(cert.pdf_url, 7 * 24 * 3600) : '#';
-    await emailService.sendCertificate({
+    const result = await emailService.sendCertificate({
       to: cert.recipient_email,
       recipientName: cert.recipient_name,
       eventName: cert.fields?.event_name || 'your program',
@@ -38,6 +48,14 @@ async function processEmail(job) {
       downloadUrl,
       footer: org.footer_text,
     });
+
+    // Resend not configured (dev / misconfigured prod): nothing actually left
+    // the server, so don't claim 'sent' or consume email quota.
+    if (result?.skipped) {
+      await supabaseAdmin.from('certificates').update({ email_status: 'not_sent' }).eq('id', certificateId);
+      return { skipped: 'not_configured' };
+    }
+
     await supabaseAdmin.from('certificates').update({ email_status: 'sent' }).eq('id', certificateId);
     await usageService.incrementEmails(orgId, 1);
     return { sent: true };

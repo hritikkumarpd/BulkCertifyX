@@ -81,7 +81,10 @@ export const billingService = {
    * uniquely in billing_events, so a replayed webhook is a no-op.
    */
   async handleWebhookEvent(event) {
-    const eventId = event.id || event?.payload?.subscription?.entity?.id + ':' + event.event;
+    // Razorpay always sends a top-level event id; fall back to a composite key
+    // only if it's missing. Parenthesized so precedence can't produce
+    // "undefined:type" collisions across distinct events.
+    const eventId = event.id || `${event?.payload?.subscription?.entity?.id || 'unknown'}:${event.event}`;
     const sub = event?.payload?.subscription?.entity;
     const payment = event?.payload?.payment?.entity;
 

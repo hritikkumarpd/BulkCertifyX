@@ -26,18 +26,21 @@ export const teamController = {
       role: z.enum(['admin', 'member']),
     }).parse(req.body);
 
-    // Enforce team-size limit.
-    const tier = await usageService.getPlanTier(req.org.id);
-    const cap = getPlan(tier).limits.teamMembers;
-    if (cap >= 0) {
-      const { count } = await supabaseAdmin
-        .from('organization_members').select('id', { count: 'exact', head: true }).eq('org_id', req.org.id);
-      if ((count || 0) >= cap) throw Errors.quotaExceeded(`Your plan allows up to ${cap} team member(s).`);
-    }
-
     const { data: existing } = await supabaseAdmin
       .from('organization_members').select('id, status').eq('org_id', req.org.id).eq('email', email).maybeSingle();
     if (existing && existing.status === 'active') throw Errors.conflict('That person is already a member.');
+
+    // Enforce team-size limit — but only for a genuinely new seat. Re-inviting
+    // someone who already has a row (invited) doesn't add a member.
+    if (!existing) {
+      const tier = await usageService.getPlanTier(req.org.id);
+      const cap = getPlan(tier).limits.teamMembers;
+      if (cap >= 0) {
+        const { count } = await supabaseAdmin
+          .from('organization_members').select('id', { count: 'exact', head: true }).eq('org_id', req.org.id);
+        if ((count || 0) >= cap) throw Errors.quotaExceeded(`Your plan allows up to ${cap} team member(s).`);
+      }
+    }
 
     const raw = secureToken();
     const inviteExpires = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
@@ -83,6 +86,16 @@ export const teamController = {
     if ((role === 'owner' || member.role === 'owner') && req.org.role !== 'owner') {
       throw Errors.forbidden('Only an owner can change owner roles.');
     }
+
+    // Never allow demoting the last remaining owner — it would strand the org
+    // with no one able to manage owners/billing.
+    if (member.role === 'owner' && role !== 'owner') {
+      const { count } = await supabaseAdmin
+        .from('organization_members').select('id', { count: 'exact', head: true })
+        .eq('org_id', req.org.id).eq('role', 'owner').eq('status', 'active');
+      if ((count || 0) <= 1) throw Errors.badRequest('Cannot demote the only owner. Assign another owner first.');
+    }
+
     await supabaseAdmin.from('organization_members').update({ role }).eq('id', member.id);
     await auditService.log({ orgId: req.org.id, userId: req.user.id, action: 'member.role_changed', resourceType: 'member', resourceId: member.id, metadata: { role } });
     return ok(res, { id: member.id, role });

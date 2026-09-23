@@ -24,6 +24,14 @@ const DEFAULTS = {
 let uid = 0;
 const nextId = () => `el_${Date.now()}_${uid++}`;
 
+// Coerce a numeric input to a finite number, falling back to `d` for empty /
+// partial / non-numeric input so NaN never gets persisted into the design
+// (NaN serializes to null in JSON and corrupts element geometry).
+const num = (v, d = 0) => {
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : d;
+};
+
 export default function TemplateEditorPage() {
   const { id } = useParams();
   const { data, isLoading } = useQuery({ queryKey: ['template', id], queryFn: () => apiGet(`/templates/${id}`) });
@@ -173,8 +181,8 @@ export default function TemplateEditorPage() {
                     <option>Inter</option><option>Playfair Display</option><option>Merriweather</option>
                   </Select>
                   <div className="grid grid-cols-2 gap-2">
-                    <Input label="Size" type="number" value={selected.fontSize} onChange={(e) => updateElement({ fontSize: +e.target.value })} />
-                    <Select label="Weight" value={selected.fontWeight} onChange={(e) => updateElement({ fontWeight: +e.target.value })}>
+                    <Input label="Size" type="number" value={selected.fontSize} onChange={(e) => updateElement({ fontSize: num(e.target.value, 24) })} />
+                    <Select label="Weight" value={selected.fontWeight} onChange={(e) => updateElement({ fontWeight: num(e.target.value, 400) })}>
                       <option value={400}>Regular</option><option value={500}>Medium</option><option value={600}>Semibold</option><option value={700}>Bold</option>
                     </Select>
                   </div>
@@ -190,17 +198,17 @@ export default function TemplateEditorPage() {
                 <>
                   <Input label="Image URL" value={selected.src} onChange={(e) => updateElement({ src: e.target.value })} placeholder="https://…" />
                   <div className="grid grid-cols-2 gap-2">
-                    <Input label="Width %" type="number" value={selected.width} onChange={(e) => updateElement({ width: +e.target.value })} />
-                    <Input label="Height %" type="number" value={selected.height} onChange={(e) => updateElement({ height: +e.target.value })} />
+                    <Input label="Width %" type="number" value={selected.width} onChange={(e) => updateElement({ width: num(e.target.value) })} />
+                    <Input label="Height %" type="number" value={selected.height} onChange={(e) => updateElement({ height: num(e.target.value) })} />
                   </div>
                 </>
               )}
-              {selected.type === 'qr' && <Input label="Size %" type="number" value={selected.width} onChange={(e) => updateElement({ width: +e.target.value })} />}
+              {selected.type === 'qr' && <Input label="Size %" type="number" value={selected.width} onChange={(e) => updateElement({ width: num(e.target.value) })} />}
               {selected.type === 'line' && (
                 <>
                   <div className="grid grid-cols-2 gap-2">
-                    <Input label="Width %" type="number" value={selected.width} onChange={(e) => updateElement({ width: +e.target.value })} />
-                    <Input label="Thickness" type="number" value={selected.thickness} onChange={(e) => updateElement({ thickness: +e.target.value })} />
+                    <Input label="Width %" type="number" value={selected.width} onChange={(e) => updateElement({ width: num(e.target.value) })} />
+                    <Input label="Thickness" type="number" value={selected.thickness} onChange={(e) => updateElement({ thickness: num(e.target.value, 1) })} />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <Select label="Style" value={selected.style} onChange={(e) => updateElement({ style: e.target.value })}><option>solid</option><option>dashed</option></Select>
@@ -209,8 +217,8 @@ export default function TemplateEditorPage() {
                 </>
               )}
               <div className="grid grid-cols-2 gap-2">
-                <Input label="X %" type="number" value={Math.round(selected.x)} onChange={(e) => updateElement({ x: +e.target.value })} />
-                <Input label="Y %" type="number" value={Math.round(selected.y)} onChange={(e) => updateElement({ y: +e.target.value })} />
+                <Input label="X %" type="number" value={Math.round(selected.x)} onChange={(e) => updateElement({ x: num(e.target.value) })} />
+                <Input label="Y %" type="number" value={Math.round(selected.y)} onChange={(e) => updateElement({ y: num(e.target.value) })} />
               </div>
               <button onClick={deleteElement} className="btn-ghost w-full text-danger"><Trash2 className="h-4 w-4" /> Delete element</button>
             </div>
